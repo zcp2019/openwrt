@@ -1,0 +1,153 @@
+三，编译固件
+
+注意：
+
+1，不要用 root 用户进行编译
+2，国内用户编译前最好准备好梯子
+3，默认登陆IP 192.168.1.1 密码 password
+—————————————————————————————————————
+1，安装编译依赖
+
+sudo apt update -y
+sudo apt full-upgrade -y
+sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools \
+libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \vim wget xmlto xxd zlib1g-dev
+
+2，下载源代码
+
+打开科学上网工具，最好全局！以下源码三选一下载，也可以使用其他团队的源码！
+
+git clone https://github.com/openwrt/openwrt                官方版本
+git clone https://github.com/coolsnowwolf/lede              lede版本
+git clone -b 22.03 --single-branch https://github.com/Lienol/openwrt      lienol版本
+cd openwrt                        切换到文件目录
+
+如需指定openwrt版本，可以使用以下命令
+
+git tag                                              查看稳定版，回车键拉到最低，按Q结束！
+git checkout v22.03.3                      指定版本，红色部分位版本号
+
+3，添加插件或主题
+
+打开openwrt文件夹，找到feeds.conf.default文件打开，添加到最下面！
+
+src-git amlogic https://github.com/ophub/luci-app-amlogic        电视盒子必须添加
+src-git alist https://github.com/sbwml/luci-app-alist                     Alist插件
+src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall.git;packages
+src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;luci
+src-git kenzo https://github.com/kenzok8/openwrt-packages
+src-git argonnew https://github.com/jerrykuku/luci-theme-argon.git;main      主题
+
+4，更新源码
+
+./scripts/feeds update -a                更新源码
+./scripts/feeds install -a                  拷贝源码
+
+5，定制openwrt系统
+
+make menuconfig 打开openwrt配置面板
+———————————————————————————————————
+#必须设置项目（CPU架构，镜像文件格式，）
+
+Target System -> QEMU ARM Virtual Machine     （注意：这是电视盒子 x96 max+）
+Subtarget -> QEMU ARMv8 Virtual Machine (cortex-a53)   
+Target Profile -> Default
+Target Images -> tar.gz
+
+CPU架构查询表：点击此处
+
+*** 必选软件包(基础依赖包，仅保证打出的包可以写入EMMC,可以在EMMC上在线升级，不包含具体的应用)：
+
+Languages -> Perl
+                            -> perl-http-date
+                            -> perlbase-file
+                            -> perlbase-getopt
+                           -> perlbase-time
+                           -> perlbase-unicode
+                           -> perlbase-utf8
+
+Utilities -> Compression -> bsdtar 或 p7zip(非官方源)、pigz
+             -> Disc -> blkid、fdisk、lsblk、parted
+             -> Filesystem -> attr 、btrfs-progs(Build with zstd support)、chattr、dosfstools、e2fsprogs、f2fs-tools、f2fsck、lsattr、mkf2fs、xfs-fsck、xfs-mkfs
+             -> Shells -> bash
+            -> gawk、getopt、losetup、tar、uuidgen
+
+*** Wifi基础包，打出的包可支持博通SDIO无线模块,Firmware不用选，因为打包源码中已经包含了来自Armbian的firmware，会自动覆盖openwrt rootfs中已有的firmware
+
+Kernel modules -> Wireless Drivers -> kmod-brcmfmac(SDIO)
+                         -> kmod-brcmutil
+                         -> kmod-cfg80211
+                         -> kmod-mac80211
+                       -> USB Support -> kmod-usb-net-asix
+                                                 -> kmod-usb-net-asix-ax88179
+                                                 -> kmod-usb2
+                                                 -> kmod-usb3
+红色为选填，如果你需要！USB3.0转千兆网卡（型号：亚信asix-ax88179）则必选！
+
+Network -> WirelessAPD -> hostapd-common
+                                        -> wpa-cli
+                                        -> wpad-basic
+              -> iw
+
+*** 插件和主题，语言设置选项，根据需求设置，为了减少编译失败的概率，除了必要的晶晨插件，其他都不要安装，主题也是。可以编译成功后单独编译插件在安装。
+
+
+LUCI -> 2.Modules -> Translations -> Chinese simplified                简体中文 自选！
+        -> 3.Applications -> luci-app-amlogic                      晶晨插件，电视盒子必选！
+        -> 4. Themes                                      尽量不要安装，不然容易后台面板进不去！
+
+######如果需要重新配置##########
+
+方法：使用命令
+
+rm -rf ./tmp && rm -rf .config
+make menuconfig
+make V=s -j$(nproc)
+
+6，下载 dl 库，编译固件 （-j 后面是线程数）
+
+make -j8 download V=s                     下载dl库，V=s 显示任务详细情况
+make V=s -j4                                      4代表线程，根据个人实际情况调整
+
+如果编译失败，可以执行以下命令：
+
+make clean               删除编译目录/bin和/build_dir目录中的文件
+make dirclean          除了删除编译目录之外还删除编译工具目录，删除/bin和/build_dir目录的中的文件(make clean)以及/staging_dir、/toolchain、/tmp和/logs中的文件，一般在更换CPU架构的情况下才操作。
+
+7，下载编译压缩包
+
+编译完成后输出路径：home/用户名/openwrt/bin/targets，下载到本地电脑，需要通过SSH远程登录进行下载。ubuntu默认是没开通SSH登录，所以我们需要进行开通。
+
+开通SSH登录方法：
+
+1，必须切换成为root用户
+sudo -i
+2，先更新软件列表和更新软件
+sudo apt-get update
+3，先更新软件列表和更新软件
+sudo apt-get upgrade
+4，安装ssh
+apt-get install ssh
+5，启动ssh服务
+sudo /etc/init.d/ssh start
+6，检查是否有ssh环境
+ps -e | grep ssh
+
+ubuntu开通root登录SSH权限
+
+1， 使用普通用户登录后切换root
+sudo -i
+2，创建root管理员密码
+passwd root
+3，开启root登录
+sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config
+4，开启密码验证
+sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+5，重启ssh服务
+service sshd restart
+6，检查是否有ssh环境
+ps -e | grep ssh
